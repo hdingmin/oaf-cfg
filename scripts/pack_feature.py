@@ -27,10 +27,13 @@ XTEA 参数 (硬编码于 fwx_feature.c):
     python pack_feature.py decrypt <in.bin> <out.txt>
 """
 import argparse
+import gzip
+import io
 import os
 import struct
 import sys
 import tarfile
+import zipfile
 import zlib
 
 MAGIC = b"FWXB"
@@ -145,6 +148,38 @@ def pack_tarbin(bin_path, out_path, icons_dir=None):
     return out_path
 
 
+def build_release(cfg_path, out_zip, version, icons_dir=None, note_bytes=None):
+    """
+    产出与官方发布包完全一致的三层结构：
+
+        feature3.0_cn_<version>.zip
+        └── feature3.0_cn_<version>/
+            ├── feature3.0_cn_<version>-free.bin   (gzip 压缩的 tar)
+            └── 升级说明.txt
+
+    .bin 内部 = tar，含 ./feature.cfg 与 ./app_icons/*。
+    """
+    # 1) 生成 tar（./feature.cfg + ./app_icons）
+    tar_buf = io.BytesIO()
+    with tarfile.open(fileobj=tar_buf, mode="w", format=tarfile.GNU_FORMAT) as tf:
+        tf.add(cfg_path, arcname="./feature.cfg")
+        if icons_dir and os.path.isdir(icons_dir):
+            tf.add(icons_dir, arcname="./app_icons")
+    tar_bytes = tar_buf.getvalue()
+
+    # 2) gzip 压缩（mtime=0，与官方包一致）
+    gz = gzip.compress(tar_bytes, compresslevel=9, mtime=0)
+
+    # 3) 外层 zip
+    folder = f"feature3.0_cn_{version}"
+    with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(zipfile.ZipInfo(folder + "/"), b"")
+        zf.writestr(f"{folder}/feature3.0_cn_{version}-free.bin", gz)
+        if note_bytes:
+            zf.writestr(f"{folder}/升级说明.txt", note_bytes)
+    return out_zip
+
+
 def _main():
     p = argparse.ArgumentParser(description="OAF 特征库打包/加密工具")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -168,6 +203,13 @@ def _main():
     s.add_argument("bin")
     s.add_argument("out_txt")
 
+    s = sub.add_parser("release")
+    s.add_argument("cfg")
+    s.add_argument("out_zip")
+    s.add_argument("--version", required=True, help="例如 26.4.11")
+    s.add_argument("--icons", default=None)
+    s.add_argument("--note", default=None, help="升级说明.txt 路径")
+
     a = p.parse_args()
 
     if a.cmd == "tar":
@@ -190,6 +232,13 @@ def _main():
         with open(a.out_txt, "wb") as f:
             f.write(plain)
         print(f"wrote {a.out_txt} ({len(plain)} bytes)")
+    elif a.cmd == "release":
+        note_bytes = None
+        if a.note and os.path.exists(a.note):
+            with open(a.note, "rb") as f:
+                note_bytes = f.read()
+        out = build_release(a.cfg, a.out_zip, a.version, a.icons, note_bytes)
+        print(f"wrote {out}")
 
 
 if __name__ == "__main__":
