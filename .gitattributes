@@ -1,0 +1,6 @@
+# 特征库与脚本需保持 LF 行尾（最终运行在 Linux 路由器上）
+*.cfg text eol=lf
+*.py  text eol=lf
+*.md  text eol=lf
+*.sh  text eol=lf
+*.lua text eol=lf

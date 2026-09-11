@@ -1,0 +1,15 @@
+# 压缩包 / 打包产物
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.bin
+*.bak
+
+# Python
+__pycache__/
+*.pyc
+
+# 临时/验证文件
+*.json.tmp
+/tmp/
