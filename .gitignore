@@ -8,6 +8,7 @@
 
 # 例外：releases/ 下存档发布包
 !releases/*.zip
+!releases/*.bin
 
 # Python
 __pycache__/

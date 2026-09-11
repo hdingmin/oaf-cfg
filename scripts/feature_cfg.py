@@ -43,25 +43,13 @@ SIG_FIELDS = ["proto", "sport", "dport", "host", "request", "dict", "search", "i
 
 
 def parse_signature(raw: str):
-    """'tcp;;;weibo;;' -> ['tcp','','','weibo','','','','']"""
-    parts = raw.split(";")
-    while len(parts) < len(SIG_FIELDS):
-        parts.append("")
-    # 保留前 8 个字段，多余的合并进最后（容错）
-    if len(parts) > len(SIG_FIELDS):
-        parts = parts[: len(SIG_FIELDS) - 1] + [";".join(parts[len(SIG_FIELDS) - 1:])]
-    return parts
+    """'tcp;;;weibo;;' -> ['tcp','','','weibo','','']，保留原始分号结构（不补位不裁剪）。"""
+    return raw.split(";")
 
 
 def format_signature(fields):
-    """8 字段 list -> 'tcp;;;weibo'，去掉末尾连续空字段的分号"""
-    fields = list(fields) + [""] * (len(SIG_FIELDS) - len(fields))
-    fields = fields[: len(SIG_FIELDS)]
-    # 去掉末尾的空字段
-    end = len(fields)
-    while end > 0 and fields[end - 1] == "":
-        end -= 1
-    return ";".join(fields[:end])
+    """8 字段以内 list -> 'tcp;;;weibo;;'，原样拼接，不裁剪末尾分号（字段数可变）。"""
+    return ";".join(fields)
 
 
 class App:
@@ -72,11 +60,12 @@ class App:
         self.category = category             # {'id','en','zh'} 或 None
 
     def to_dict(self):
+        sigs = [[str(x) for x in s] for s in self.signatures]
         return {
             "id": self.id,
             "name": self.name,
             "category": self.category,
-            "signatures": [dict(zip(SIG_FIELDS, s)) for s in self.signatures],
+            "signatures": sigs,
         }
 
     @staticmethod
@@ -84,7 +73,7 @@ class App:
         sigs = []
         for s in d.get("signatures", []):
             if isinstance(s, list):
-                sigs.append(list(s))
+                sigs.append([str(x) for x in s])
             elif isinstance(s, dict):
                 sigs.append([s.get(f, "") for f in SIG_FIELDS])
         return App(d["id"], d["name"], sigs, d.get("category"))
@@ -186,25 +175,16 @@ def serialize(lib):
         lines.append(f"#format {lib.format}")
     for h in lib.header_lines:
         lines.append(h)
-    # 按 category 分组输出（保持分类首次出现顺序，组内保持 app 顺序），
-    # 这样同一分类的 app 聚在一起，新增 app 不会因位置而错归分类。
-    groups = {}
-    order = []
+    # 保持 parse 原始顺序，分类首次出现时输出 #class（与官方文本结构一致）
+    seen = set()
     for app in lib.apps:
-        key = app.category["id"] if app.category else None
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(app)
-    for key in order:
-        apps = groups[key]
-        if key is not None:
-            c = apps[0].category
+        c = app.category
+        if c and c.get("id") not in seen:
             en = c.get("en", "")
             zh = f" {c.get('zh','')}" if c.get("zh") else ""
             lines.append(f"#class {en} {c['id']}{zh}".rstrip())
-        for app in apps:
-            lines.append(app.line())
+            seen.add(c["id"])
+        lines.append(app.line())
     return "\n".join(lines) + "\n"
 
 
@@ -219,6 +199,14 @@ def add_app(lib, app_id, name, sig_strings, category=None, replace=False):
             if a.id == app_id:
                 lib.apps[i] = app
                 return app
+    # 插入到同分类最后一个 app 之后，保持分类聚合正确
+    if category and category.get("id"):
+        cid = category["id"]
+        idxs = [i for i, a in enumerate(lib.apps)
+                if a.category and a.category.get("id") == cid]
+        if idxs:
+            lib.apps.insert(idxs[-1] + 1, app)
+            return app
     lib.apps.append(app)
     return app
 

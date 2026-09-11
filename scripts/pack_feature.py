@@ -148,6 +148,18 @@ def pack_tarbin(bin_path, out_path, icons_dir=None):
     return out_path
 
 
+def pack_upload(cfg_path, out_path, icons_dir=None):
+    """
+    LuCI 直接上传的 tar.gz：顶层 ./feature.cfg + ./app_icons/，gzip 压缩。
+    LuCI 端用 `tar -zxvf` 解压后读 /tmp/upload/feature.cfg 校验 #version/#format v3.0。
+    """
+    with tarfile.open(out_path, "w:gz") as tf:
+        tf.add(cfg_path, arcname="./feature.cfg")
+        if icons_dir and os.path.isdir(icons_dir):
+            tf.add(icons_dir, arcname="./app_icons")
+    return out_path
+
+
 def build_release(cfg_path, out_zip, version, icons_dir=None, note_bytes=None):
     """
     产出与官方发布包完全一致的三层结构：
@@ -189,6 +201,11 @@ def _main():
     s.add_argument("out_tar")
     s.add_argument("--icons", default=None)
 
+    s = sub.add_parser("upload")
+    s.add_argument("cfg")
+    s.add_argument("out_targz")
+    s.add_argument("--icons", default=None)
+
     s = sub.add_parser("tarbin")
     s.add_argument("bin")
     s.add_argument("out_targz")
@@ -214,6 +231,9 @@ def _main():
 
     if a.cmd == "tar":
         out = pack_tar(a.cfg, a.out_tar, a.icons)
+        print(f"wrote {out}")
+    elif a.cmd == "upload":
+        out = pack_upload(a.cfg, a.out_targz, a.icons)
         print(f"wrote {out}")
     elif a.cmd == "tarbin":
         out = pack_tarbin(a.bin, a.out_targz, a.icons)
