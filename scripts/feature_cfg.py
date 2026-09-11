@@ -186,17 +186,25 @@ def serialize(lib):
         lines.append(f"#format {lib.format}")
     for h in lib.header_lines:
         lines.append(h)
-    # 按 app 首次出现的 category 顺序，交错输出 #class 与 app 行，
-    # 以保留 "app 归属哪个分类" 的隐含关系。
-    seen = set()
+    # 按 category 分组输出（保持分类首次出现顺序，组内保持 app 顺序），
+    # 这样同一分类的 app 聚在一起，新增 app 不会因位置而错归分类。
+    groups = {}
+    order = []
     for app in lib.apps:
-        c = app.category
-        if c and c.get("id") not in seen:
+        key = app.category["id"] if app.category else None
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(app)
+    for key in order:
+        apps = groups[key]
+        if key is not None:
+            c = apps[0].category
             en = c.get("en", "")
             zh = f" {c.get('zh','')}" if c.get("zh") else ""
             lines.append(f"#class {en} {c['id']}{zh}".rstrip())
-            seen.add(c["id"])
-        lines.append(app.line())
+        for app in apps:
+            lines.append(app.line())
     return "\n".join(lines) + "\n"
 
 
@@ -323,7 +331,9 @@ def _main():
         lib = load(a.src)
         cat = None
         if a.cat:
-            cat = {"id": a.cat, "en": "", "zh": ""}
+            cat = next((c for c in lib.classes if c["id"] == str(a.cat)), None)
+            if cat is None:
+                cat = {"id": str(a.cat), "en": "", "zh": ""}
         add_app(lib, a.app_id, a.name, a.sig, category=cat, replace=a.replace)
         if a.inplace:
             save(lib, a.src)
