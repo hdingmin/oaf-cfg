@@ -6,6 +6,9 @@
 *.bin
 *.bak
 
+# 例外：releases/ 下存档发布包
+!releases/*.zip
+
 # Python
 __pycache__/
 *.pyc
